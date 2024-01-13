@@ -7,6 +7,8 @@
 #include "nvenc_utils.h"
 #endif
 
+#define USE_MRS_CODE 1
+
 #if USE_RAW
 #define FPS 10
 #else
@@ -17,6 +19,27 @@
 
 constexpr int kBitrateQualityScale = 200000;
 const char *kEncoderTypeNames[] = {"VAAPI", "NVENC", "MEDIACODEC", "LIBX264"};
+
+static void dump_avframe_info(AVFrame* in_frame) {
+    if (!in_frame) {
+        ILOGD("Invalid AVFrame pointer");
+        return;
+    }
+
+    // Print general frame info
+    ILOGD("Frame width: %d, height: %d", in_frame->width, in_frame->height);
+    ILOGD("Pixel format: %s", av_get_pix_fmt_name(static_cast<AVPixelFormat>(in_frame->format)));
+
+    // Get the number of planes
+    int num_planes = av_pix_fmt_count_planes(static_cast<AVPixelFormat>(in_frame->format));
+    ILOGD("Number of planes: %d", num_planes);
+
+    // Iterate over each plane
+    for (int i = 0; i < AV_NUM_DATA_POINTERS; ++i) {
+        ILOGD("Plane %d data pointer: %p", i, static_cast<void*>(in_frame->data[i]));
+        ILOGD("Plane %d linesize: %d", i, in_frame->linesize[i]);
+    }
+}
 
 FFmpegEncoder::FFmpegEncoder(EncoderType pEncoderType, int pWidth, int pHeight, int pQuality,
                              int pFps)
@@ -29,7 +52,7 @@ FFmpegEncoder::FFmpegEncoder(EncoderType pEncoderType, int pWidth, int pHeight, 
     // Constructor initialization
     // av_register_all();
     // avcodec_register_all();
-    av_log_set_level(AV_LOG_DEBUG);
+    av_log_set_level(AV_LOG_TRACE);
 
 #ifdef SUPPORT_HW_ENCODER
     InitializeHWContext();
@@ -339,6 +362,68 @@ bool FFmpegEncoder::EncodeFrame(const std::string &img) {
         return false;
     }
 
+#if USE_MRS_CODE
+    SwsContext* sws_ctx = nullptr;
+    int new_width = width;
+    int new_height = height;
+    uint8_t* in_buffer = reinterpret_cast<uint8_t *>(buffer.data());
+
+    AVFrame *input_avframe = av_frame_alloc();
+    AVFrame *output_avframe = av_frame_alloc();
+    AVFrame* sw_frame = output_avframe;
+    AVFrame *imgFrame = input_avframe;
+
+    uint codec_imgsize = av_image_get_buffer_size(
+        out_pf, width, height, alignment);
+    ILOGD("FFmpegEncoder::EncodeFrame - buffer size %u from %s(%d) %dx%d, alignment=%d",
+          codec_imgsize, av_get_pix_fmt_name(out_pf), out_pf, width, height, alignment);
+    uint8_t *out_buffer = (uint8_t *)av_malloc(codec_imgsize);
+    ILOGD("FFmpegEncoder::EncodeFrame - sws_getCachedContext(swscale=%p, width=%d, height=%d, in_pf=%d, new_width=%d, new_height=%d, out_pf=%d, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr)"
+            , sws_ctx, width, height, in_pf, new_width, new_height, out_pf);
+    /* Get the context */
+    sws_ctx = sws_getCachedContext(sws_ctx,
+                                       width, height, in_pf,
+                                       new_width, new_height, out_pf,
+                                       SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+    if (sws_ctx == nullptr) {
+        ILOGE("FFmpegEncoder::EncodeFrame - Failed getting swscale context");
+        return -6;
+    }
+
+    /* Fill in the buffers */
+    ILOGD("FFmpegEncoder::EncodeFrame - av_image_fill_arrays(input_avframe->data=%p, input_avframe->linesize=%d, in_buffer=%p, in_pf=%d, width=%d, height=%d, alignment=%d)"
+            , input_avframe->data, input_avframe->linesize, (uint8_t*)in_buffer, in_pf, width, height, alignment);
+    if (av_image_fill_arrays(input_avframe->data, input_avframe->linesize,
+                             (uint8_t*)in_buffer, in_pf, width, height, alignment) <= 0) {
+        ILOGE("FFmpegEncoder::EncodeFrame - Failed filling input frame with input buffer");
+        return -7;
+    }
+    ILOGD("FFmpegEncoder::EncodeFrame - After calling av_image_fill_arrays, input_avframe:");
+    dump_avframe_info(input_avframe);
+    ILOGD("FFmpegEncoder::EncodeFrame - av_image_fill_arrays(output_avframe->data=%p, output_avframe->linesize=%d, out_buffer=%p, out_pf=%d, width=%d, height=%d, alignment=%d)"
+            , output_avframe->data, output_avframe->linesize, out_buffer, out_pf, new_width, new_height, alignment);
+    if (av_image_fill_arrays(output_avframe->data, output_avframe->linesize,
+                             out_buffer, out_pf, new_width, new_height, alignment) <= 0) {
+        ILOGE("FFmpegEncoder::EncodeFrame - Failed filling output frame with output buffer");
+        return -8;
+    }
+    ILOGD("FFmpegEncoder::EncodeFrame - After calling av_image_fill_arrays, output_avframe:");
+    dump_avframe_info(output_avframe);
+
+    /* Do the conversion */
+    ILOGD("FFmpegEncoder::EncodeFrame - sws_scale(sws_ctx=%p, input_avframe->data=%p, input_avframe->linesize=%d, 0, height=%d, output_avframe->data=%p, output_avframe->linesize=%d)"
+            , sws_ctx, input_avframe->data, input_avframe->linesize, output_avframe->data, output_avframe->linesize);
+    if (!sws_scale(sws_ctx,
+                   input_avframe->data, input_avframe->linesize,
+                   0, height,
+                   output_avframe->data, output_avframe->linesize)) {
+        ILOGE("FFmpegEncoder::EncodeFrame - swscale conversion failed");
+        return -10;
+    }
+    sw_frame->format = out_pf;
+    sw_frame->width = width;
+    sw_frame->height = height;
+#else
     // Allocate the input AVFrame
     AVFrame *imgFrame = av_frame_alloc();
     if (!imgFrame) {
@@ -372,8 +457,14 @@ bool FFmpegEncoder::EncodeFrame(const std::string &img) {
     sw_frame->height = height;
     av_frame_get_buffer(sw_frame, 32);
 
+    ILOGD("FFmpegEncoder::EncodeFrame - imgFrame:");
+    dump_avframe_info(imgFrame);
+    ILOGD("FFmpegEncoder::EncodeFrame - sw_frame:");
+    dump_avframe_info(sw_frame);
+
     sws_scale(sws_ctx, imgFrame->data, imgFrame->linesize, 0, height, sw_frame->data,
               sw_frame->linesize);
+#endif
 
     // Load and encode image...
     AVPacket pkt;
@@ -537,9 +628,13 @@ bool FFmpegEncoder::EncodeFrame(const std::string &img) {
       return false;
     }
 #else
+
+    ILOGD("FFmpegEncoder::EncodeFrame - Before sending to encoder, sw_frame:");
+    dump_avframe_info(sw_frame);
+
     // Fallback to software encoding
     if (avcodec_send_frame(codec_context_, sw_frame) < 0) {
-        ILOGE("Error sending the frame to the software encoder");
+        ILOGE("Error sending the sw_frame to the encoder");
         sws_freeContext(sws_ctx);
         av_frame_free(&sw_frame);
         av_frame_free(&imgFrame);
