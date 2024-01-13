@@ -15,6 +15,8 @@ extern "C" {
 #include <string>
 #include <vector>
 
+#define USE_RAW 1
+
 // #define SUPPORT_HW_ENCODER
 
 class FFmpegEncoder {

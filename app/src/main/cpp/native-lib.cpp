@@ -25,6 +25,95 @@ static void log_callback_test(void *ptr, int level, const char *fmt, va_list vl)
 
 int my_main(const char* prefix_path) {
     const std::string output_file = prefix_path + std::string("/output.mp4");
+#if USE_RAW
+    std::vector<std::string> input_images = {
+        "images/1_after_get_frame_param.raw",
+        "images/2_after_get_frame_param.raw",
+        "images/3_after_get_frame_param.raw",
+        "images/4_after_get_frame_param.raw",
+        "images/5_after_get_frame_param.raw",
+        "images/6_after_get_frame_param.raw",
+        "images/7_after_get_frame_param.raw",
+        "images/8_after_get_frame_param.raw",
+        "images/9_after_get_frame_param.raw",
+        "images/10_after_get_frame_param.raw",
+        "images/11_after_get_frame_param.raw",
+        "images/12_after_get_frame_param.raw",
+        "images/13_after_get_frame_param.raw",
+        "images/14_after_get_frame_param.raw",
+        "images/15_after_get_frame_param.raw",
+        "images/16_after_get_frame_param.raw",
+        "images/17_after_get_frame_param.raw",
+        "images/18_after_get_frame_param.raw",
+        "images/19_after_get_frame_param.raw",
+        "images/20_after_get_frame_param.raw",
+        "images/21_after_get_frame_param.raw",
+        "images/22_after_get_frame_param.raw",
+        "images/23_after_get_frame_param.raw",
+        "images/24_after_get_frame_param.raw",
+        "images/25_after_get_frame_param.raw",
+        "images/26_after_get_frame_param.raw",
+        "images/27_after_get_frame_param.raw",
+        "images/28_after_get_frame_param.raw",
+        "images/29_after_get_frame_param.raw",
+        "images/30_after_get_frame_param.raw",
+        "images/31_after_get_frame_param.raw",
+        "images/32_after_get_frame_param.raw",
+        "images/33_after_get_frame_param.raw",
+        "images/34_after_get_frame_param.raw",
+        "images/35_after_get_frame_param.raw",
+        "images/36_after_get_frame_param.raw",
+        "images/37_after_get_frame_param.raw",
+        "images/38_after_get_frame_param.raw",
+        "images/39_after_get_frame_param.raw",
+        "images/40_after_get_frame_param.raw",
+        "images/41_after_get_frame_param.raw",
+        "images/42_after_get_frame_param.raw",
+        "images/43_after_get_frame_param.raw",
+        "images/44_after_get_frame_param.raw",
+        "images/45_after_get_frame_param.raw",
+        "images/46_after_get_frame_param.raw",
+        "images/47_after_get_frame_param.raw",
+        "images/48_after_get_frame_param.raw",
+        "images/49_after_get_frame_param.raw",
+        "images/50_after_get_frame_param.raw",
+        "images/51_after_get_frame_param.raw",
+        "images/52_after_get_frame_param.raw",
+        "images/53_after_get_frame_param.raw",
+        "images/54_after_get_frame_param.raw",
+        "images/55_after_get_frame_param.raw",
+        "images/56_after_get_frame_param.raw",
+        "images/57_after_get_frame_param.raw",
+        "images/58_after_get_frame_param.raw",
+        "images/59_after_get_frame_param.raw",
+        "images/60_after_get_frame_param.raw",
+        "images/61_after_get_frame_param.raw",
+        "images/62_after_get_frame_param.raw",
+        "images/63_after_get_frame_param.raw",
+        "images/64_after_get_frame_param.raw",
+        "images/65_after_get_frame_param.raw",
+        "images/66_after_get_frame_param.raw",
+        "images/67_after_get_frame_param.raw",
+        "images/68_after_get_frame_param.raw",
+        "images/69_after_get_frame_param.raw",
+        "images/70_after_get_frame_param.raw",
+        "images/71_after_get_frame_param.raw",
+        "images/72_after_get_frame_param.raw",
+        "images/73_after_get_frame_param.raw",
+        "images/74_after_get_frame_param.raw",
+        "images/75_after_get_frame_param.raw",
+        "images/76_after_get_frame_param.raw",
+        "images/77_after_get_frame_param.raw",
+        "images/78_after_get_frame_param.raw",
+        "images/79_after_get_frame_param.raw",
+        "images/80_after_get_frame_param.raw",
+        "images/81_after_get_frame_param.raw",
+        "images/82_after_get_frame_param.raw",
+        "images/83_after_get_frame_param.raw",
+        "images/84_after_get_frame_param.raw",
+        "images/85_after_get_frame_param.raw",
+    };
+#else
     std::vector<std::string> input_images = {
         "images/00001-capture.jpg",
         "images/00002-capture.jpg",
@@ -329,12 +418,17 @@ int my_main(const char* prefix_path) {
         "images/00301-capture.jpg",
         "images/00302-capture.jpg",
     };
+#endif
 
     // Start time
     auto start = std::chrono::high_resolution_clock::now();
 
 #if ANDROID
-    FFmpegEncoder encoder(FFmpegEncoder::EncoderType::MEDIACODEC, 640, 480, false);
+#if USE_RAW
+    FFmpegEncoder encoder(FFmpegEncoder::EncoderType::MEDIACODEC, 800, 1280, 5, 10);
+#else
+    FFmpegEncoder encoder(FFmpegEncoder::EncoderType::MEDIACODEC, 640, 480);
+#endif
 //    FFmpegEncoder encoder(FFmpegEncoder::EncoderType::LIBX264, 640, 480, false);
 #else
     FFmpegEncoder encoder(FFmpegEncoder::EncoderType::NVENC, 640, 480, false);
